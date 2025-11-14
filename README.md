@@ -13,15 +13,30 @@ The container will contain the latest release code as the production environment
 ### **Testing Locally (Using own Test Data)**:
 1. Build the lambda container image (from within the lambda_function folder) you'd like to test: 
     
-    `docker build -t processing_function:latest . --no-cache`
+```sh
+docker build \
+    --build-arg BASE_IMAGE=$BASE_IMAGE \                  # Optional: specify base image
+    --build-arg REQUIREMENTS_FILE=$REQUIREMENTS_FILE \    # Optional: specify requirements file
+    -t sdc_aws_processing_lambda:latest . \
+    --network host
+```
 
 2. Run the lambda container image you've built, this will start the lambda runtime environment:
     
-    `docker run -p 9000:8080 -v <directory_for_processed_files>:/test_data -e SDC_AWS_FILE_PATH=/test_data/<file_to_process_name> processing_function:latest`
+```sh
+docker run \
+  -p 9000:8080 \
+  -v <directory_for_processed_files>:/test_data \
+  -e SDC_AWS_FILE_PATH=/test_data/<file_to_process_name> \
+  sdc_aws_processing_lambda:latest
+```
 
 3. From a `separate` terminal, make a curl request to the running lambda function:
 
-    `curl -XPOST "http://localhost:9000/2015-03-31/functions/function/invocations" -d @lambda_function/tests/test_data/test_eea_event.json`
+```sh
+curl -XPOST "http://localhost:9000/2015-03-31/functions/function/invocations" \
+  -d @lambda_function/tests/test_data/test_eea_event.json
+```
 
 4. Close original terminal running the docker image.
 
@@ -50,4 +65,4 @@ The container will contain the latest release code as the production environment
 
 
 ### **How this Lambda Function is deployed**
-This lambda function is part of the main SWxSOC Pipeline ([Architecture Repo Link](https://github.com/HERMES-SOC/sdc_aws_pipeline_architecture)). It is deployed via AWS Codebuild within that repository. It is first built and tagged within the appropriate production or development repository (depending if it is a release or commit). View the Codebuild CI/CD file [here](buildspec.yml).
+This lambda function is part of the main SWxSOC Pipeline ([Architecture Repo Link](https://github.com/swxsoc/sdc_aws_architecture)). It is deployed via AWS Codebuild within that repository. It is first built and tagged within the appropriate production or development repository (depending if it is a release or commit). View the Codebuild CI/CD file [here](buildspec.yml).

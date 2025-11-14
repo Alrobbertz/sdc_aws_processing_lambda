@@ -12,6 +12,7 @@ from pathlib import Path
 from itertools import combinations
 import shutil
 import traceback
+from typing import Tuple
 
 import swxsoc
 
@@ -164,10 +165,10 @@ class FileProcessor:
             )
 
             FileProcessor._track_file_metatracker(
-                science_filename_parser,
-                Path(file_path),
-                self.file_key,
-                self.instrument_bucket_name,
+                science_filename_parser=science_filename_parser,
+                file_path=Path(file_path),
+                s3_key=self.file_key,
+                s3_bucket=self.instrument_bucket_name,
                 status=status,
             )
 
@@ -182,15 +183,16 @@ class FileProcessor:
             # If calibrated files are found, set status to success
             status = self.build_status(
                 status=Status.SUCCESS,
-                message=f"File Processed Successfully",
+                message="File Processed Successfully",
                 total_time=total_time,
             )
 
+            # Track the original science file as processed successfully
             science_file_id, science_product_id = FileProcessor._track_file_metatracker(
-                science_filename_parser,
-                Path(file_path),
-                self.file_key,
-                self.instrument_bucket_name,
+                science_filename_parser=science_filename_parser,
+                file_path=Path(file_path),
+                s3_key=self.file_key,
+                s3_bucket=self.instrument_bucket_name,
                 status=status,
             )
 
@@ -203,6 +205,10 @@ class FileProcessor:
                 }
             )
 
+            # Filter out None values from calibrated filenames
+            calibrated_filenames = [
+                fname for fname in calibrated_filenames if fname is not None
+            ]
             # Push file to S3 Bucket
             for calibrated_filename in calibrated_filenames:
                 status = self.build_status(
@@ -220,11 +226,11 @@ class FileProcessor:
 
                 # Track the calibrated file in the CDF Tracker
                 self._track_file_metatracker(
-                    science_filename_parser,
-                    Path("/tmp") / calibrated_filename,
-                    calibrated_filename,
-                    destination_bucket,
-                    science_product_id,
+                    science_filename_parser=science_filename_parser,
+                    file_path=Path("/tmp") / calibrated_filename,
+                    s3_key=calibrated_filename,
+                    s3_bucket=destination_bucket,
+                    science_product_id=science_product_id,
                     status=status,
                 )
 
@@ -260,14 +266,17 @@ class FileProcessor:
                     fromlist=["data"],
                 )
                 # Get all files in test data directory
-                test_data_dir = Path(instr_pkg_data.__path__[0])
+                test_data_dir = Path(instr_pkg_data.__path__[0]) / "test"
+                log.info(f"Test data directory: {test_data_dir}")
                 test_data_files = list(test_data_dir.glob("**/*"))
                 log.info(f"Found {len(test_data_files)} files in test data directory")
                 log.info(f"Using {test_data_files} as test data")
-                # Get any files ending in .bin or .cdf and calibrate them
+                # Stub path list for calibrated files
+                path_list = []
+                # Loop the test data files for calibration
                 for test_data_file in test_data_files:
-                    if test_data_file.suffix in [".bin", ".cdf", ".fits"]:
-                        log.info(f"Calibrating {test_data_file}")
+                    if test_data_file.suffix in [".bin", ".cdf", ".fits", ".csv"]:
+                        log.info(f"Calibrating {test_data_file.name}")
                         # Make /test_data directory if it doesn't exist
                         Path("/test_data").mkdir(parents=True, exist_ok=True)
                         # Copy file to /test_data directory using shutil
@@ -275,28 +284,43 @@ class FileProcessor:
                         file_path = Path(f"/test_data/{test_data_file_path.name}")
                         shutil.copy(test_data_file_path, file_path)
                         # Calibrate file
-                        calibrated_filename = calibration.process_file(file_path)[0]
-                        # Copy calibrated file to test data directory
-                        calibrated_file_path = Path(calibrated_filename)
-                        # Return name of calibrated file
-                        log.info(f"Calibrated file saved as {calibrated_file_path}")
+                        files_list = calibration.process_file(file_path)
 
-                        return calibrated_filename
+                        if len(files_list) == 0:
+                            log.warning(
+                                f"No calibrated files generated for {file_path}"
+                            )
+                            continue
+                        for generated_file in files_list:
+                            if generated_file is not None:
+                                new_file_path = Path(generated_file)
+                                calibrated_filename = new_file_path.name
+                                path_list.append(calibrated_filename)
+                                log.info(
+                                    f"Calibrated file saved as {calibrated_filename}"
+                                )
+                            else:
+                                # Pass-through None values to indicate no file was created
+                                path_list.append(None)
+                                log.warning(f"'None' file generated for {file_path}")
+                # Return list of calibrated files
+                return path_list
 
-                # If no files ending in .bin or .cdf are found, raise an error
-                raise FileNotFoundError(
-                    "No files ending in .bin or .cdf found in test data directory"
-                )
             log.info(f"Calibrating {file_path}")
             # Get name of new file
             files_list = calibration.process_file(Path(file_path))
 
             path_list = []
             for generated_file in files_list:
-                new_file_path = Path(generated_file)
-                calibrated_filename = new_file_path.name
-                path_list.append(calibrated_filename)
-                log.info(f"Calibrated file saved as {calibrated_filename}")
+                if generated_file is not None:
+                    new_file_path = Path(generated_file)
+                    calibrated_filename = new_file_path.name
+                    path_list.append(calibrated_filename)
+                    log.info(f"Calibrated file saved as {calibrated_filename}")
+                else:
+                    # Pass-through None values to indicate no file was created
+                    path_list.append(None)
+                    log.warning(f"'None' file generated for {file_path}")
 
             return path_list
 
@@ -336,84 +360,102 @@ class FileProcessor:
         reraise=True,
     )
     def _track_file_metatracker(
-        science_filename_parser,
-        file_path,
-        s3_key,
-        s3_bucket,
-        science_product_id=None,
-        status=None,
-    ) -> int:
+        science_filename_parser: callable,
+        file_path: Path,
+        s3_key: str,
+        s3_bucket: str,
+        science_product_id: int = None,
+        status: dict = None,
+    ) -> Tuple[int, int]:
         """
-        Tracks processed science product in the CDF Tracker file database.
+        Tracks processed science product in the File Metadata tracker database.
         It involves initializing the database engine, setting up database tables,
         and tracking both the original and processed files.
 
-        :param science_filename_parser: The parser function to process file names.
-        :type science_filename_parser: function
-        :param file_path: The path of the original file.
-        :type file_path: Path
+        Parameters
+        ----------
+        science_filename_parser : function
+            The parser function to process file names.
+        file_path : Path
+            The path of the file in the filesystem.
+        s3_key : str
+            The S3 key of the file.
+        s3_bucket : str
+            The S3 bucket of the file.
+        science_product_id : int, optional
+            The ID of the science product, by default None.
+        status : dict, optional
+            The status dictionary for tracking, by default None.
+
+        Returns
+        -------
+        Tuple[int, int]
+            A tuple containing the science file ID and science product ID.
         """
         secret_arn = os.getenv("RDS_SECRET_ARN", None)
-        if secret_arn:
-            try:
-                # Validate file path
-                if not file_path or not isinstance(file_path, Path):
-                    raise ValueError("Invalid file path provided.")
-                # Check if file exists
-                if not file_path.exists():
-                    raise FileNotFoundError(f"File not found: {file_path}")
+        if not secret_arn:
+            log.error(
+                f"Failed to update MetaTracker for file {file_path}. No RDS Secret ARN found in environment variables.",
+            )
+            return None, None
 
-                # Get Database Credentials
-                session = boto3.session.Session()
-                client = session.client(service_name="secretsmanager")
-                response = client.get_secret_value(SecretId=secret_arn)
-                secret = json.loads(response["SecretString"])
-                connection_string = (
-                    f"postgresql://{secret['username']}:{secret['password']}@"
-                    f"{secret['host']}:{secret['port']}/{secret['dbname']}"
+        try:
+            # Validate file path
+            if not file_path or not isinstance(file_path, Path):
+                raise ValueError("Invalid file path provided.")
+            # Check if file exists
+            if not file_path.exists():
+                raise FileNotFoundError(f"File not found: {file_path}")
+
+            # Get Database Credentials
+            session = boto3.session.Session()
+            client = session.client(service_name="secretsmanager")
+            response = client.get_secret_value(SecretId=secret_arn)
+            secret = json.loads(response["SecretString"])
+            connection_string = (
+                f"postgresql://{secret['username']}:{secret['password']}@"
+                f"{secret['host']}:{secret['port']}/{secret['dbname']}"
+            )
+
+            metatracker_config = FileProcessor.get_metatracker_config(swxsoc.config)
+
+            log.debug(swxsoc.config)
+
+            log.debug(metatracker_config)
+
+            metatracker.set_config(metatracker_config)
+
+            from metatracker.database import create_engine
+            from metatracker.database.tables import create_tables
+            from metatracker.tracker import tracker
+
+            # Initialize the database engine
+            database_engine = create_engine(connection_string)
+
+            # Create tables if they do not exist
+            create_tables(database_engine)
+
+            # Set tracker to MetaTracker
+            meta_tracker = tracker.MetaTracker(database_engine, science_filename_parser)
+
+            if meta_tracker:
+                science_file_id, science_product_id = meta_tracker.track(
+                    file_path, s3_key, s3_bucket, status=status
                 )
 
-                metatracker_config = FileProcessor.get_metatracker_config(swxsoc.config)
+                return science_file_id, science_product_id
 
-                log.debug(swxsoc.config)
+            return None, None
 
-                log.debug(metatracker_config)
-
-                metatracker.set_config(metatracker_config)
-
-                from metatracker.database import create_engine
-                from metatracker.database.tables import create_tables
-                from metatracker.tracker import tracker
-
-                # Initialize the database engine
-                database_engine = create_engine(connection_string)
-
-                # Create tables if they do not exist
-                create_tables(database_engine)
-
-                # Set tracker to MetaTracker
-                meta_tracker = tracker.MetaTracker(
-                    database_engine, science_filename_parser
-                )
-
-                if meta_tracker:
-                    science_file_id, science_product_id = meta_tracker.track(
-                        file_path, s3_key, s3_bucket, status=status
-                    )
-
-                    return science_file_id, science_product_id
-
-                return None
-
-            except Exception as e:
-                log.error(
-                    {
-                        "status": "ERROR",
-                        "message": str(e),
-                        "traceback": traceback.format_exc(),
-                    }
-                )
-                return None
+        except Exception as e:
+            log.error(
+                {
+                    "status": "ERROR",
+                    "message": str(e),
+                    "traceback": traceback.format_exc(),
+                }
+            )
+            return None, None
 
     @staticmethod
     def get_metatracker_config(swxsoc_config: dict) -> dict:
