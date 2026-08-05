@@ -1,4 +1,5 @@
-sdc_aws_utils @ git+https://github.com/swxsoc/sdc_aws_utils.git
+psycopg2-binary
+swxsoc @ git+https://github.com/swxsoc/swxsoc.git@main
 metatracker @ git+https://github.com/swxsoc/MetaTracker.git
 impax_craft @ git+https://github.com/iMPAXSat/impax_craft.git
 impax_iaxis @ git+https://github.com/iMPAXSat/impax_iaxis.git

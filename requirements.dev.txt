@@ -1,10 +1,11 @@
-sdc_aws_utils @ git+https://github.com/swxsoc/sdc_aws_utils.git
-hermes_eea @ git+https://github.com/HERMES-SOC/hermes_eea.git 
+swxsoc @ git+https://github.com/swxsoc/swxsoc.git@main
+hermes_eea @ git+https://github.com/HERMES-SOC/hermes_eea.git
 moto==5.0.15
 pytest==9.0.3
 pytest-astropy==0.11.0
 pytest-cov==4.1.0
 ruff
+psycopg2-binary
 
 # Downstream Dependencies for Unit Testing Processing Code
 metatracker @ git+https://github.com/swxsoc/MetaTracker.git
