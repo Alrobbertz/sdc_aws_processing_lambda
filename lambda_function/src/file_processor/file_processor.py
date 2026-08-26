@@ -16,10 +16,10 @@ from typing import Any
 import boto3
 import psycopg2
 import swxsoc
-from metatracker.database import create_engine
-from metatracker.database.tables import create_tables
-from metatracker.tracker import tracker
 from swxsoc import log
+from swxsoc.db import create_engine
+from swxsoc.db.tables import create_tables
+from swxsoc.db.tracker import MetaTracker
 from swxsoc.io.s3 import get_science_file, parse_file_key, push_science_file
 from swxsoc.util.config import get_instrument_bucket, get_instrument_package
 from swxsoc.util.util import parse_science_filename
@@ -432,7 +432,7 @@ class FileProcessor:
             create_tables(database_engine)
 
             # Set tracker to MetaTracker
-            meta_tracker = tracker.MetaTracker(database_engine, parse_science_filename)
+            meta_tracker = MetaTracker(database_engine, parse_science_filename)
 
             if meta_tracker:
                 science_file_id, science_product_id = meta_tracker.track(
