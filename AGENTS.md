@@ -9,7 +9,7 @@ This is an AWS Lambda function that processes Space Weather Science Operations C
 - Parses filenames to identify source instruments (HERMES, PADRE, REACH, etc.)
 - Routes files to the appropriate instrument package for processing (calibration, analysis, format conversion)
 - Uploads processed results back to S3 in instrument-specific buckets
-- Tracks all files and processing results in a PostgreSQL metatracker database
+- Tracks all files and processing results in a PostgreSQL database via the `swxsoc[tracker]` extra (used with swxsoc.db.tracker.MetaTracker)
 
 See [README.md](README.md) for detailed documentation and local testing instructions.
 
@@ -56,7 +56,7 @@ lambda_function/
 │   │                           #  - S3 file download
 │   │                           #  - Instrument package dispatch
 │   │                           #  - Result upload to S3
-│   │                           #  - Metatracker database logging
+│   │                           #  - swxsoc MetaTracker database logging
 │   └── config/
 │       ├── README.md          # Config baking strategy & rationale
 │       └── ccsdspy/
@@ -76,7 +76,7 @@ lambda_function/src/file_processor/file_processor.py imports from:
   - swxsoc: File I/O (get_science_file, parse_file_key, push_science_file)
   - swxsoc: Config utilities (get_instrument_bucket, get_instrument_package)
   - swxsoc: Parsing (parse_science_filename)
-  - metatracker: Database engine and tracker for file/product tracking
+  - swxsoc.db: Database engine and tracker for file/product tracking
   - Instrument packages (hermes_eea, padre_meddea, etc.) dynamically via get_instrument_package()
   - tenacity: Retry logic with exponential backoff
 ```
@@ -93,10 +93,10 @@ lambda_function/src/file_processor/file_processor.py imports from:
 
 **Core Dependencies**:
 - `swxsoc` (from git): S3 I/O, config/parsing utilities, mission lookup
-- `metatracker` (from git): Database ORM and tracker for file/product provenance
+- `swxsoc[tracker]` (from git): Database ORM and tracker for file/product provenance
 - Instrument packages (dynamic): `hermes_eea`, `padre_meddea`, `padre_sharp`, `padre_craft`, `swxsoc_reach`
 - `tenacity==9.1.2`: Retry mechanism with exponential backoff for resilience
-- `psycopg2`: PostgreSQL driver for metatracker connection
+- `psycopg2`: PostgreSQL driver for the tracker database connection
 - `boto3`: AWS SDK (for S3, Timestream, etc.)
 - `moto==5.0.15`: Mocks AWS services in tests
 - `pytest`, `pytest-astropy`, `pytest-cov`: Testing framework
@@ -139,7 +139,7 @@ The `FileProcessor` class in [lambda_function/src/file_processor/file_processor.
    - Instrument package performs calibration, analysis, or format conversion
    - Returns list of calibrated output filenames
 4. **Upload**: Push calibrated results back to instrument-specific S3 bucket
-5. **Track**: Log file and product records to metatracker PostgreSQL database
+5. **Track**: Log file and product records to the PostgreSQL database through `swxsoc.db.tracker.MetaTracker`
 6. **Return**: Status response (success, failed, pending) with timing/error details
 
 The `Status` enum (`SUCCESS`, `FAILED`, `PENDING`) tracks file processing state.
@@ -174,7 +174,7 @@ The function is deployed as a Docker image to AWS ECR and invoked by SNS S3 even
 
 3. **Retry logic with tenacity**: Network/transient failures are retried with exponential backoff to improve robustness in production.
 
-4. **Comprehensive database tracking**: All files and calibrated products are logged to metatracker for provenance, auditing, and downstream pipeline tracking.
+4. **Comprehensive database tracking**: All files and calibrated products are logged through `swxsoc[tracker]` for provenance, auditing, and downstream pipeline tracking.
 
 5. **Modular mission/instrument support**: Multiple instrument packages coexist in the same Lambda, differentiated at runtime by filename parsing and configuration lookup.
 
@@ -191,7 +191,7 @@ Triggered via SNS notifications from incoming S3 bucket events.
 ## Questions or Issues?
 
 - For Lambda/processing logic questions, refer to [README.md](README.md)
-- For swxsoc/metatracker library details, see their respective GitHub repositories
+- For tracker details, see the [swxsoc database tracker documentation](https://github.com/swxsoc/swxsoc/blob/main/docs/user-guide/metatracker_guide.rst)
 - For instrument package details, consult `hermes-requirements.txt`, `padre-requirements.txt`, etc.
 - For CI/CD questions, check [buildspec.yml](buildspec.yml)
 - For config baking rationale, see [lambda_function/src/config/README.md](lambda_function/src/config/README.md)

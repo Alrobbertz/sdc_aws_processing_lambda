@@ -25,11 +25,13 @@ def default_test_mission(monkeypatch):
     mission in their example code if they need a specific mission configuration.
     """
     import swxsoc
+    import swxsoc.db
 
     # Only set if not already set (allows tests to override)
     if "SWXSOC_MISSION" not in os.environ:
         monkeypatch.setenv("SWXSOC_MISSION", "hermes")
         swxsoc.reconfigure()
+        swxsoc.db.reconfigure()
 
 
 @pytest.fixture(scope="function")
@@ -68,13 +70,13 @@ def use_mission(request, monkeypatch):
             # Test runs three times, once for each mission
             assert swxsoc.config['mission']['mission_name'] == use_mission
     """
-    import metatracker
     import swxsoc
+    import swxsoc.db
 
     mission = request.param if hasattr(request, "param") else "hermes"
     monkeypatch.setenv("SWXSOC_MISSION", mission)
     swxsoc.reconfigure()
-    metatracker.set_config()
+    swxsoc.db.reconfigure()
     yield mission
     # Explicitly reconfigure back to default after test completes
     # This is necessary because swxsoc.config is module-level state
@@ -82,4 +84,4 @@ def use_mission(request, monkeypatch):
     # This ensures the config is reset even if monkeypatch cleanup hasn't run yet
     monkeypatch.setenv("SWXSOC_MISSION", "hermes")
     swxsoc.reconfigure()
-    metatracker.set_config()
+    swxsoc.db.reconfigure()

@@ -1,6 +1,6 @@
 psycopg2-binary
 swxsoc @ git+https://github.com/swxsoc/swxsoc.git@main
-metatracker @ git+https://github.com/swxsoc/MetaTracker.git
+swxsoc[tracker] @ git+https://github.com/swxsoc/swxsoc.git@main
 padre_meddea @ git+https://github.com/PADRESat/padre_meddea.git
 padre_sharp @ git+https://github.com/PADRESat/padre_sharp.git
 padre_craft @ git+https://github.com/PADRESat/padre_craft.git
